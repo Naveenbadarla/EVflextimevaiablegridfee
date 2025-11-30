@@ -887,6 +887,74 @@ if enable_mod3 and grid_fee_series is not None:
     st.table(df_mod3)
 
 st.markdown("</div>", unsafe_allow_html=True)
+# =============================================================================
+# BAR CHARTS FOR RESULTS
+# =============================================================================
+
+import plotly.graph_objects as go
+
+# -----------------------------
+# 1) Grouped bar chart: Before vs After Mod3
+# -----------------------------
+if enable_mod3 and grid_fee_series is not None:
+
+    st.markdown("### 📊 Annual Cost Comparison (Before vs After Modul 3)")
+
+    scenarios = ["DA-indexed", "DA-optimised", "DA+ID-optimised"]
+    before = [
+        da_index_annual,
+        da_opt_annual,
+        da_id_annual,
+    ]
+    after = [
+        da_index_annual_mod3,
+        da_opt_annual_mod3,
+        da_id_annual_mod3,
+    ]
+
+    fig_cost = go.Figure(data=[
+        go.Bar(name="Before Modul 3", x=scenarios, y=before),
+        go.Bar(name="With Modul 3", x=scenarios, y=after),
+    ])
+
+    fig_cost.update_layout(
+        barmode="group",
+        height=450,
+        plot_bgcolor="#020617",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#e5e7eb"),
+        yaxis_title="Annual Cost (€)",
+        xaxis_title="Customer Type",
+    )
+
+    st.plotly_chart(fig_cost, use_container_width=True)
+
+    # -----------------------------
+    # 2) Modul 3 Savings bar chart
+    # -----------------------------
+
+    st.markdown("### 📉 Additional Savings from Modul 3")
+
+    savings_mod3 = [
+        da_index_annual - da_index_annual_mod3,
+        da_opt_annual - da_opt_annual_mod3,
+        da_id_annual - da_id_annual_mod3,
+    ]
+
+    fig_savings = go.Figure(
+        data=[go.Bar(x=scenarios, y=savings_mod3, marker_color="green")]
+    )
+
+    fig_savings.update_layout(
+        height=400,
+        plot_bgcolor="#020617",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#e5e7eb"),
+        yaxis_title="Modul 3 Extra Savings (€ / year)",
+        xaxis_title="Customer Type",
+    )
+
+    st.plotly_chart(fig_savings, use_container_width=True)
 
 # =============================================================================
 # DETAILS
