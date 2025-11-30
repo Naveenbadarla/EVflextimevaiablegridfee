@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.express as px
+import plotly.graph_objects as go
 import datetime
 import base64
 
@@ -465,7 +466,7 @@ def compute_optimised_daily_cost(E, Pmax, quarters, price_q, grid, taxes, vat):
 # MODUL 3: HT/ST/NT GRID FEE STRUCTURE
 # =============================================================================
 
-# DSO-specific prices (ct/kWh) from your slide
+# DSO-specific prices (ct/kWh)
 dso_tariffs = {
     "Westnetz": {"HT": 15.65, "ST": 9.53, "NT": 0.95},
     "Avacon": {"HT": 8.41, "ST": 6.04, "NT": 0.60},
@@ -479,7 +480,21 @@ dso_tariffs = {
     "EAM Netz": {"HT": 10.52, "ST": 5.48, "NT": 1.64},
 }
 
-# Extracted 24-hour tariff pattern from the heatmap (same for all DSOs)
+# Your DSO-specific quarter validity (True = Modul 3 active)
+dso_quarter_valid = {
+    "Westnetz":               {1: True, 2: True, 3: True, 4: True},
+    "Avacon":                 {1: True, 2: False, 3: False, 4: True},
+    "MVV Netze":              {1: True, 2: False, 3: False, 4: True},
+    "MITNETZ":                {1: True, 2: False, 3: False, 4: True},
+    "Stadtwerke München":     {1: True, 2: False, 3: False, 4: True},
+    "Thüringer Energienetze": {1: True, 2: False, 3: False, 4: True},
+    "LEW":                    {1: True, 2: True, 3: True, 4: True},
+    "NetzeBW":                {1: True, 2: True, 3: True, 4: True},
+    "Bayernwerk":             {1: False, 2: True, 3: True, 4: False},
+    "EAM Netz":               {1: True, 2: True, 3: True, 4: True},
+}
+
+# Extracted 24-hour tariff pattern from heatmap (same for all DSOs)
 # 00–23: NT/ST/HT allocation
 MOD3_HOURLY_PATTERN = [
     "NT", "NT", "NT", "NT", "NT",
@@ -490,31 +505,34 @@ MOD3_HOURLY_PATTERN = [
 
 def build_grid_fee_series(dso, num_days):
     """
-    Build a full-year 15-min grid fee series (€/kWh) for the selected DSO
-    assuming Modul 3 applies on all days (we'll gate per-quarter later).
+    Build a full-year 15-min grid fee series (€/kWh) for the selected DSO.
+    This just repeats the daily Mod3 pattern; we'll gate by quarter later.
     """
     prices = dso_tariffs[dso]  # ct/kWh
     day_96 = []
-    for code in MOD3_HOURLY_PATTERN:  # 24 entries
+    for code in MOD3_HOURLY_PATTERN:
         grid_ct = prices[code]      # ct/kWh
         grid_eur = grid_ct / 100.0  # €/kWh
         day_96.extend([grid_eur] * 4)  # 4×15min per hour
-
     return np.tile(day_96, num_days)  # length = 96 * num_days
 
-# Quarter validity: Modul 3 valid in Q1 & Q4 only
 BASE_DATE = datetime.date(2023, 1, 1)
 
-def is_mod3_valid_day(day_idx: int) -> bool:
-    """
-    Return True if Modul 3 applies on this day index:
-    Q1 (Jan–Mar) and Q4 (Oct–Dec) only.
-    """
+def get_quarter(month: int) -> int:
+    if month <= 3:
+        return 1
+    elif month <= 6:
+        return 2
+    elif month <= 9:
+        return 3
+    else:
+        return 4
+
+def is_mod3_valid_day(day_idx: int, dso: str) -> bool:
+    """Return True if Modul 3 applies on this day for the selected DSO."""
     date = BASE_DATE + datetime.timedelta(days=int(day_idx))
-    month = date.month
-    if month in (1, 2, 3, 10, 11, 12):
-        return True
-    return False
+    q = get_quarter(date.month)
+    return dso_quarter_valid.get(dso, {}).get(q, False)
 
 def compute_da_indexed_daily_mod3(E, Pmax, quarters, da_day, grid_q_day, taxes, vat):
     """DA-indexed chronological charging with time-varying grid fee."""
@@ -544,12 +562,10 @@ def compute_optimised_daily_cost_mod3(E, Pmax, quarters, price_q, grid_q_day, ta
     if len(quarters) * emax < E - 1e-6:
         raise ValueError("Charging window too short for requested energy.")
 
-    # Full €/kWh for each quarter
     full_price = np.array(
         [apply_tariffs(pq[i], grid_q_day[i], taxes, vat) for i in range(len(grid_q_day))]
     )
 
-    # Sort quarters by full cost
     sorted_q = sorted(quarters, key=lambda x: full_price[x])
 
     remain = E
@@ -659,7 +675,6 @@ id_year = id_series[: num_days * 96]
 
 st.sidebar.info(f"Using **{num_days} days** of DA & ID price data.")
 
-# Build full-year Mod3 grid fee series (€/kWh) if enabled
 grid_fee_series = None
 if enable_mod3 and selected_dso is not None:
     grid_fee_series = build_grid_fee_series(selected_dso, num_days)
@@ -687,8 +702,8 @@ with col_overview:
             </ul>
             <p>
             Optionally, <b>§14a EnWG Modul 3</b> applies a time-variable grid fee
-            (HT / ST / NT) by DSO. According to the current design, Modul 3 is
-            only valid in calendar quarters Q1 and Q4 (Jan–Mar, Oct–Dec).
+            (HT / ST / NT) by DSO. Modul-3 validity can differ by DSO and quarter
+            (Q1–Q4) based on the regulatory design.
             </p>
         </div>
         """,
@@ -794,8 +809,8 @@ try:
         da_opt_annual += c_da_opt
         da_id_annual += c_da_id
 
-        # --- With Modul 3 (if enabled and valid in this quarter) ---
-        if enable_mod3 and grid_fee_series is not None and is_mod3_valid_day(d):
+        # --- With Modul 3 (if enabled and valid in this quarter for this DSO) ---
+        if enable_mod3 and grid_fee_series is not None and selected_dso is not None and is_mod3_valid_day(d, selected_dso):
             grid_q_day = grid_fee_series[d * 96 : (d + 1) * 96]
 
             c_da_index_mod3 = compute_da_indexed_daily_mod3(
@@ -808,8 +823,7 @@ try:
                 energy, power, quarters, eff_day, grid_q_day, taxes, vat
             )
         else:
-            # Outside Modul 3 quarters (Q2+Q3) or feature off:
-            # same as baseline for this day
+            # Not in a Mod3-valid quarter or feature off:
             c_da_index_mod3 = c_da_index
             c_da_opt_mod3 = c_da_opt
             c_da_id_mod3 = c_da_id
@@ -822,7 +836,7 @@ except ValueError as e:
     st.error(str(e))
 
 # =============================================================================
-# RESULTS – 3 BLOCKS: BEFORE, AFTER, MOD3 SAVINGS
+# RESULTS – 3 BLOCKS + BAR CHARTS
 # =============================================================================
 st.markdown("<h2 id='results'></h2>", unsafe_allow_html=True)
 st.markdown('<div class="eon-card">', unsafe_allow_html=True)
@@ -848,15 +862,15 @@ df_before = pd.DataFrame(
 st.table(df_before)
 
 # 2) Annual costs WITH Modul 3
-if enable_mod3 and grid_fee_series is not None:
-    st.subheader("2️⃣ Annual Cost (WITH §14a Modul 3 – Q1 & Q4 only)")
+if enable_mod3 and grid_fee_series is not None and selected_dso is not None:
+    st.subheader("2️⃣ Annual Cost (WITH §14a Modul 3 – by DSO & quarter)")
     df_after = pd.DataFrame(
         {
             "Scenario": [
                 "Flat retail (unchanged)",
-                "DA-indexed + Modul 3",
-                "DA-optimised + Modul 3",
-                "DA+ID-optimised + Modul 3",
+                f"DA-indexed + Modul 3 ({selected_dso})",
+                f"DA-optimised + Modul 3 ({selected_dso})",
+                f"DA+ID-optimised + Modul 3 ({selected_dso})",
             ],
             "Annual cost (€)": [
                 round(flat_annual),
@@ -886,37 +900,21 @@ if enable_mod3 and grid_fee_series is not None:
     )
     st.table(df_mod3)
 
-st.markdown("</div>", unsafe_allow_html=True)
-# =============================================================================
-# BAR CHARTS FOR RESULTS
-# =============================================================================
-
-import plotly.graph_objects as go
-
-# -----------------------------
-# 1) Grouped bar chart: Before vs After Mod3
-# -----------------------------
-if enable_mod3 and grid_fee_series is not None:
-
+    # -----------------------------
+    # BAR CHARTS FOR RESULTS
+    # -----------------------------
     st.markdown("### 📊 Annual Cost Comparison (Before vs After Modul 3)")
 
     scenarios = ["DA-indexed", "DA-optimised", "DA+ID-optimised"]
-    before = [
-        da_index_annual,
-        da_opt_annual,
-        da_id_annual,
-    ]
-    after = [
-        da_index_annual_mod3,
-        da_opt_annual_mod3,
-        da_id_annual_mod3,
-    ]
+    before_vals = [da_index_annual, da_opt_annual, da_id_annual]
+    after_vals = [da_index_annual_mod3, da_opt_annual_mod3, da_id_annual_mod3]
 
-    fig_cost = go.Figure(data=[
-        go.Bar(name="Before Modul 3", x=scenarios, y=before),
-        go.Bar(name="With Modul 3", x=scenarios, y=after),
-    ])
-
+    fig_cost = go.Figure(
+        data=[
+            go.Bar(name="Before Modul 3", x=scenarios, y=before_vals),
+            go.Bar(name="With Modul 3", x=scenarios, y=after_vals),
+        ]
+    )
     fig_cost.update_layout(
         barmode="group",
         height=450,
@@ -926,12 +924,7 @@ if enable_mod3 and grid_fee_series is not None:
         yaxis_title="Annual Cost (€)",
         xaxis_title="Customer Type",
     )
-
     st.plotly_chart(fig_cost, use_container_width=True)
-
-    # -----------------------------
-    # 2) Modul 3 Savings bar chart
-    # -----------------------------
 
     st.markdown("### 📉 Additional Savings from Modul 3")
 
@@ -942,9 +935,8 @@ if enable_mod3 and grid_fee_series is not None:
     ]
 
     fig_savings = go.Figure(
-        data=[go.Bar(x=scenarios, y=savings_mod3, marker_color="green")]
+        data=[go.Bar(x=scenarios, y=savings_mod3)]
     )
-
     fig_savings.update_layout(
         height=400,
         plot_bgcolor="#020617",
@@ -953,8 +945,9 @@ if enable_mod3 and grid_fee_series is not None:
         yaxis_title="Modul 3 Extra Savings (€ / year)",
         xaxis_title="Customer Type",
     )
-
     st.plotly_chart(fig_savings, use_container_width=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 # =============================================================================
 # DETAILS
@@ -974,10 +967,8 @@ st.markdown(
 - Charging pattern: **{freq}**, giving **{sessions} sessions** across {num_days} days.  
 - §14a EnWG Modul 3:  
   - Uses DSO-specific **HT/ST/NT grid prices (ct/kWh)**.  
-  - Hourly pattern (NT early night & late evening, HT in late afternoon/evening).  
-  - Applied with 15-min resolution (4 slots per hour).  
-  - Valid only in **Q1 and Q4** (January–March, October–December).  
-  - In Q2+Q3 the model falls back to the constant grid fee.  
+  - Hourly pattern from the graphic is applied with 15-min resolution.  
+  - Modul-3 validity by DSO & quarter is configurable and currently set as you provided.  
 """
 )
 st.markdown("</div>", unsafe_allow_html=True)
