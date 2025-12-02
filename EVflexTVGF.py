@@ -6,52 +6,6 @@ import plotly.graph_objects as go
 import datetime
 import base64
 
-import os
-import requests
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-def aix_answer(user_message):
-    url = "https://api.openai.com/v1/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENAI_API_KEY}"
-    }
-    payload = {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": "You are AIX, an expert assistant for EV charging optimisation, DA/ID logic, §14a grid fees, valuation modelling, and energy markets."},
-            {"role": "user", "content": user_message}
-        ]
-    }
-
-    response = requests.post(url, headers=headers, json=payload)
-    data = response.json()
-
-    return data["choices"][0]["message"]["content"]
-
-# ------------------------
-# Chat session state + input
-# ------------------------
-if "aix_history" not in st.session_state:
-    st.session_state.aix_history = []
-
-for role, msg in st.session_state.aix_history:
-    if role == "user":
-        st.markdown(f"**You:** {msg}")
-    else:
-        st.markdown(f"**AIX:** {msg}")
-
-user_input = st.chat_input("Ask AIX anything...")
-
-if user_input:
-    st.session_state.aix_history.append(("user", user_input))
-    response = aix_answer(user_input)
-    st.session_state.aix_history.append(("assistant", response))
-    st.rerun()
-
-
-
 # =============================================================================
 # PAGE CONFIG
 # =============================================================================
@@ -261,26 +215,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-st.markdown("<h1 style='text-align:center; font-family:Trebuchet MS, Helvetica, sans-serif; font-weight:800; color:#E2000F; text-shadow:0px 0px 8px rgba(255,255,255,0.15); letter-spacing:1.5px; margin-top:14px;'>E.ON AI<span style='color:white;'>X</span> — AI e<span style='color:white;'>X</span>cellence Initiative</h1>", unsafe_allow_html=True)
-st.markdown("""
-<style>
-@keyframes spin { 
-  0% { transform: rotate(0deg); } 
-  100% { transform: rotate(360deg); } 
-}
-.wheel {
-  display:inline-block;
-  animation: spin 2s linear infinite;
-  font-size:22px;
-}
-</style>
-
-<div style='text-align:center; font-family:Segoe UI, Helvetica, sans-serif; font-size:20px; color:#7A7A7A; margin-top:-8px;'>
-Where <span class='wheel'>🛞</span>ptimization meets <span class='wheel'>🛞</span>pportunity — powered by AI.
-</div>
-""", unsafe_allow_html=True)
-
-
 
 from streamlit.components.v1 import html
 
@@ -965,72 +899,84 @@ if enable_mod3 and grid_fee_series is not None and selected_dso is not None:
         }
     )
     st.table(df_mod3)
-# -------------------------
-# AIX Assistant Response Function (model-aware)
-# -------------------------
+
+    # =============================================================================
+# AIX ASSISTANT — MODEL-AWARE ANSWER ENGINE
+# =============================================================================
 import os
 import requests
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 def aix_answer(user_message):
-
-    # Build context using YOUR model variable names
-    context = f"""
-    MODEL SUMMARY (automatically extracted):
-
-    DA-indexed:
-      - Without Module 3: {da_index_annual:.2f} €
-      - With Module 3 (Westnetz): {da_index_annual_mod3:.2f} €
-      - Savings: {da_index_annual - da_index_annual_mod3:.2f} €
-
-    DA-optimised:
-      - Without Module 3: {da_opt_annual:.2f} €
-      - With Module 3: {da_opt_annual_mod3:.2f} €
-      - Savings: {da_opt_annual - da_opt_annual_mod3:.2f} €
-
-    DA+ID-optimised:
-      - Without Module 3: {da_id_annual:.2f} €
-      - With Module 3: {da_id_annual_mod3:.2f} €
-      - Savings: {da_id_annual - da_id_annual_mod3:.2f} €
+    """
+    Model-aware answer engine for AIX Assistant.
+    Uses your actual model outputs (annual costs & savings)
+    to interpret results and answer domain questions.
     """
 
-    explanation = """
-    Interpretation:
-    - DA-indexed does NOT shift charging hours.
-    - Module 3 only reduces tariffs in DSO-defined low-load windows.
-    - If the EV charges outside those windows, Module 3 provides no benefit.
-    - This can lead to NEGATIVE savings for DA-indexed profiles.
-    """
+    try:
+        context = f"""
+        MODEL SUMMARY (Automated Context Injection)
 
-    url = "https://api.openai.com/v1/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENAI_API_KEY}"
-    }
+        ► DA-indexed:
+            - Without Modul 3: {da_index_annual:.2f} €
+            - With Modul 3:    {da_index_annual_mod3:.2f} €
+            - Savings:         {da_index_annual - da_index_annual_mod3:.2f} €
+
+        ► DA-optimised:
+            - Without Modul 3: {da_opt_annual:.2f} €
+            - With Modul 3:    {da_opt_annual_mod3:.2f} €
+            - Savings:         {da_opt_annual - da_opt_annual_mod3:.2f} €
+
+        ► DA+ID-optimised:
+            - Without Modul 3: {da_id_annual:.2f} €
+            - With Modul 3:    {da_id_annual_mod3:.2f} €
+            - Savings:         {da_id_annual - da_id_annual_mod3:.2f} €
+
+        KEY INSIGHTS:
+        - Modul 3 gives lower grid fees **only during DSO low-load windows**.
+        - DA-indexed does not shift charging → often misses discounted hours.
+        - Therefore, DA-indexed may see **negative Modul-3 savings**.
+        - Optimised strategies benefit more because they naturally pick low-cost hours.
+        """
+
+    except Exception:
+        context = "Model results are not fully calculated yet."
+
+    system_prompt = (
+        "You are AIX, an expert assistant on EV smart charging, "
+        "day-ahead & intraday optimisation, §14a Modul 3 grid fees, "
+        "and tariff interpretation. Give concise, correct, numeric explanations. "
+        "Use the model outputs provided in the context. If results show negative savings, "
+        "explain why logically."
+    )
+
     payload = {
         "model": "gpt-4o-mini",
         "messages": [
-            {"role": "system", "content": "You are AIX, an expert in EV smart charging, DA/ID optimisation, and §14a Module 3. Use the model results and explain clearly.\n"
-                                         + context + explanation},
-            {"role": "user", "content": user_message}
-        ]
+            {"role": "system", "content": system_prompt + "\n\n" + context},
+            {"role": "user", "content": user_message},
+        ],
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload)
-        data = response.json()
+        r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+        data = r.json()
 
         if "error" in data:
-            return f"⚠️ API error: {data['error'].get('message', 'Unknown error')}"
-
-        if "choices" not in data:
-            return "⚠️ No reply from AI. Try again."
+            return "⚠️ API Error: " + data["error"].get("message", "")
 
         return data["choices"][0]["message"]["content"]
 
     except Exception as e:
         return f"⚠️ Request failed: {str(e)}"
+
 
     # -----------------------------
     # BAR CHARTS FOR RESULTS
@@ -1080,6 +1026,27 @@ def aix_answer(user_message):
     st.plotly_chart(fig_savings, use_container_width=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
+# =============================================================================
+# AIX ASSISTANT — CHAT LOGIC
+# =============================================================================
+if "aix_history" not in st.session_state:
+    st.session_state.aix_history = []
+
+# Display chat transcript in popup once opened
+for role, msg in st.session_state.aix_history:
+    if role == "user":
+        st.markdown(f"**You:** {msg}")
+    else:
+        st.markdown(f"**AIX:** {msg}")
+
+# Chat input bar
+user_q = st.chat_input("Ask AIX anything about the model…")
+
+if user_q:
+    st.session_state.aix_history.append(("user", user_q))
+    reply = aix_answer(user_q)
+    st.session_state.aix_history.append(("assistant", reply))
+    st.rerun()
 
 # =============================================================================
 # DETAILS
@@ -1104,64 +1071,48 @@ st.markdown(
 """
 )
 st.markdown("</div>", unsafe_allow_html=True)
-# ------------------------
-# Chat Session State
-# ------------------------
-if "aix_history" not in st.session_state:
-    st.session_state.aix_history = []
-
-for role, msg in st.session_state.aix_history:
-    if role == "user":
-        st.markdown(f"**You:** {msg}")
-    else:
-        st.markdown(f"**AIX:** {msg}")
-
-user_input = st.chat_input("Ask AIX...")
-
-if user_input:
-    st.session_state.aix_history.append(("user", user_input))
-    answer = aix_answer(user_input)
-    st.session_state.aix_history.append(("assistant", answer))
-    st.rerun()
-# -----------------------
-# Floating Chat Bubble UI
-# -----------------------
+# =============================================================================
+# AIX ASSISTANT — FLOATING CHAT BUBBLE UI
+# =============================================================================
 st.markdown("""
 <style>
 #aix_chat_button {
     position: fixed;
-    bottom: 22px;
-    right: 22px;
+    bottom: 24px;
+    right: 24px;
+    padding: 12px 20px;
     background-color: #E2000F;
     color: white;
-    padding: 12px 20px;
-    border-radius: 40px;
     font-weight: 600;
-    font-size: 16px;
+    border-radius: 40px;
     cursor: pointer;
-    z-index: 10000;
+    box-shadow: 0px 4px 14px rgba(0,0,0,0.5);
+    z-index: 9999;
 }
 #aix_chat_window {
     position: fixed;
-    bottom: 80px;
-    right: 22px;
-    width: 330px;
-    height: 430px;
-    background-color: #1e1e1e;
-    color: white;
-    padding: 12px;
-    border-radius: 12px;
+    bottom: 90px;
+    right: 24px;
+    width: 340px;
+    height: 480px;
+    background-color: #0d1117;
     border: 2px solid #E2000F;
+    border-radius: 18px;
+    padding: 14px;
     display: none;
-    z-index: 10001;
+    overflow-y: auto;
+    color: white;
+    z-index: 10000;
 }
 </style>
 
-<div id="aix_chat_button" onclick="document.getElementById('aix_chat_window').style.display='block';">
+<div id="aix_chat_button"
+     onclick="document.getElementById('aix_chat_window').style.display='block';">
 🤖 AIX Assistant
 </div>
 
 <div id="aix_chat_window">
-    <h4 style="color:#E2000F;margin:0;">AIX Assistant</h4>
+    <h3 style="color:#E2000F; margin-top:0;">AIX Assistant</h3>
+    <p style="font-size:13px; opacity:0.7;">Ask me about costs, savings, Modul 3 effects, or optimisation logic.</p>
 </div>
 """, unsafe_allow_html=True)
