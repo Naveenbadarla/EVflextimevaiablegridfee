@@ -1078,7 +1078,7 @@ for role, msg in st.session_state.aix_history:
         )
     else:
         st.markdown(
-            f"<p style='color:#CCCCCC; font-weight:600;'>🤖 AIX: {msg}</p>",
+            f"<p style='color:#FFE066; font-weight:600;'>🤖 AIX: {msg}</p>",
             unsafe_allow_html=True
         )
 
