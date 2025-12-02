@@ -30,6 +30,25 @@ def aix_answer(user_message):
 
     return data["choices"][0]["message"]["content"]
 
+# ------------------------
+# Chat session state + input
+# ------------------------
+if "aix_history" not in st.session_state:
+    st.session_state.aix_history = []
+
+for role, msg in st.session_state.aix_history:
+    if role == "user":
+        st.markdown(f"**You:** {msg}")
+    else:
+        st.markdown(f"**AIX:** {msg}")
+
+user_input = st.chat_input("Ask AIX anything...")
+
+if user_input:
+    st.session_state.aix_history.append(("user", user_input))
+    response = aix_answer(user_input)
+    st.session_state.aix_history.append(("assistant", response))
+    st.rerun()
 
 
 
