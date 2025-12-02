@@ -901,7 +901,7 @@ if enable_mod3 and grid_fee_series is not None and selected_dso is not None:
     st.table(df_mod3)
 
     # =============================================================================
-# AIX ASSISTANT — MODEL-AWARE ANSWER ENGINE
+# AIX ASSISTANT — MODEL-AWARE ENGINE (STEP 1)
 # =============================================================================
 import os
 import requests
@@ -909,15 +909,12 @@ import requests
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 def aix_answer(user_message):
-    """
-    Model-aware answer engine for AIX Assistant.
-    Uses your actual model outputs (annual costs & savings)
-    to interpret results and answer domain questions.
-    """
+    """AIX assistant that answers based on your model outputs."""
 
+    # ---- Model context injection ----
     try:
         context = f"""
-        MODEL SUMMARY (Automated Context Injection)
+        MODEL SUMMARY
 
         ► DA-indexed:
             - Without Modul 3: {da_index_annual:.2f} €
@@ -934,22 +931,19 @@ def aix_answer(user_message):
             - With Modul 3:    {da_id_annual_mod3:.2f} €
             - Savings:         {da_id_annual - da_id_annual_mod3:.2f} €
 
-        KEY INSIGHTS:
-        - Modul 3 gives lower grid fees **only during DSO low-load windows**.
-        - DA-indexed does not shift charging → often misses discounted hours.
-        - Therefore, DA-indexed may see **negative Modul-3 savings**.
-        - Optimised strategies benefit more because they naturally pick low-cost hours.
+        INTERPRETATION RULES:
+        - Modul 3 only reduces grid fees during DSO low-load windows (NT/ST).
+        - DA-indexed does NOT shift charging → often misses discounted windows.
+        - Therefore DA-indexed Modul-3 savings can be NEGATIVE.
+        - Optimised customers choose the cheapest quarter-hours → stronger Modul-3 benefit.
         """
-
-    except Exception:
-        context = "Model results are not fully calculated yet."
+    except:
+        context = "Model results not available."
 
     system_prompt = (
-        "You are AIX, an expert assistant on EV smart charging, "
-        "day-ahead & intraday optimisation, §14a Modul 3 grid fees, "
-        "and tariff interpretation. Give concise, correct, numeric explanations. "
-        "Use the model outputs provided in the context. If results show negative savings, "
-        "explain why logically."
+        "You are AIX, an expert in EV smart charging, DA/ID markets, "
+        "grid fees, and §14a Modul 3. Provide precise reasoning and interpret results "
+        "numerically based on the provided context."
     )
 
     payload = {
@@ -966,7 +960,8 @@ def aix_answer(user_message):
     }
 
     try:
-        r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+        r = requests.post("https://api.openai.com/v1/chat/completions",
+                          headers=headers, json=payload)
         data = r.json()
 
         if "error" in data:
@@ -1026,27 +1021,6 @@ def aix_answer(user_message):
     st.plotly_chart(fig_savings, use_container_width=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
-# =============================================================================
-# AIX ASSISTANT — CHAT LOGIC
-# =============================================================================
-if "aix_history" not in st.session_state:
-    st.session_state.aix_history = []
-
-# Display chat transcript in popup once opened
-for role, msg in st.session_state.aix_history:
-    if role == "user":
-        st.markdown(f"**You:** {msg}")
-    else:
-        st.markdown(f"**AIX:** {msg}")
-
-# Chat input bar
-user_q = st.chat_input("Ask AIX anything about the model…")
-
-if user_q:
-    st.session_state.aix_history.append(("user", user_q))
-    reply = aix_answer(user_q)
-    st.session_state.aix_history.append(("assistant", reply))
-    st.rerun()
 
 # =============================================================================
 # DETAILS
@@ -1072,7 +1046,29 @@ st.markdown(
 )
 st.markdown("</div>", unsafe_allow_html=True)
 # =============================================================================
-# AIX ASSISTANT — FLOATING CHAT BUBBLE UI
+# AIX ASSISTANT — CHAT SESSION LOGIC (STEP 2)
+# =============================================================================
+
+if "aix_history" not in st.session_state:
+    st.session_state.aix_history = []
+
+# Show chat messages
+for role, msg in st.session_state.aix_history:
+    if role == "user":
+        st.markdown(f"**You:** {msg}")
+    else:
+        st.markdown(f"**AIX:** {msg}")
+
+# Chat input box
+user_msg = st.chat_input("Ask AIX about results, savings, DA/ID logic, Modul 3…")
+
+if user_msg:
+    st.session_state.aix_history.append(("user", user_msg))
+    reply = aix_answer(user_msg)
+    st.session_state.aix_history.append(("assistant", reply))
+    st.rerun()
+# =============================================================================
+# AIX ASSISTANT — FLOATING BUBBLE UI (STEP 3)
 # =============================================================================
 st.markdown("""
 <style>
@@ -1080,28 +1076,27 @@ st.markdown("""
     position: fixed;
     bottom: 24px;
     right: 24px;
-    padding: 12px 20px;
+    padding: 12px 22px;
     background-color: #E2000F;
     color: white;
-    font-weight: 600;
     border-radius: 40px;
+    font-weight: 600;
     cursor: pointer;
-    box-shadow: 0px 4px 14px rgba(0,0,0,0.5);
     z-index: 9999;
+    box-shadow: 0px 4px 12px rgba(0,0,0,0.45);
 }
 #aix_chat_window {
     position: fixed;
     bottom: 90px;
     right: 24px;
-    width: 340px;
+    width: 350px;
     height: 480px;
     background-color: #0d1117;
+    border-radius: 12px;
+    padding: 18px;
     border: 2px solid #E2000F;
-    border-radius: 18px;
-    padding: 14px;
-    display: none;
     overflow-y: auto;
-    color: white;
+    display: none;
     z-index: 10000;
 }
 </style>
@@ -1112,7 +1107,7 @@ st.markdown("""
 </div>
 
 <div id="aix_chat_window">
-    <h3 style="color:#E2000F; margin-top:0;">AIX Assistant</h3>
-    <p style="font-size:13px; opacity:0.7;">Ask me about costs, savings, Modul 3 effects, or optimisation logic.</p>
+    <h3 style="color:#E2000F;margin-top:0;">AIX Assistant</h3>
 </div>
 """, unsafe_allow_html=True)
+
