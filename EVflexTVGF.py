@@ -900,16 +900,16 @@ if enable_mod3 and grid_fee_series is not None and selected_dso is not None:
     )
     st.table(df_mod3)
 
-    # =============================================================================
-# AIX ASSISTANT — MODEL-AWARE ENGINE (STEP 1)
+# =============================================================================
+# AIX ASSISTANT — MODEL-AWARE ENGINE (STEP 1, GROQ VERSION)
 # =============================================================================
 import os
 import requests
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")  # <—— Groq key loaded here
 
 def aix_answer(user_message):
-    """AIX assistant that answers based on your model outputs."""
+    """AIX assistant that answers based on your model outputs (Groq-powered)."""
 
     # ---- Model context injection ----
     try:
@@ -931,37 +931,39 @@ def aix_answer(user_message):
             - With Modul 3:    {da_id_annual_mod3:.2f} €
             - Savings:         {da_id_annual - da_id_annual_mod3:.2f} €
 
-        INTERPRETATION RULES:
-        - Modul 3 only reduces grid fees during DSO low-load windows (NT/ST).
+        Interpretation rules:
+        - Modul 3 applies lower grid fees ONLY in DSO low-load windows.
         - DA-indexed does NOT shift charging → often misses discounted windows.
-        - Therefore DA-indexed Modul-3 savings can be NEGATIVE.
-        - Optimised customers choose the cheapest quarter-hours → stronger Modul-3 benefit.
+        - Therefore its Modul-3 savings can be NEGATIVE.
+        - Optimised profiles benefit more because they align charging with cheap hours.
         """
     except:
         context = "Model results not available."
 
     system_prompt = (
         "You are AIX, an expert in EV smart charging, DA/ID markets, "
-        "grid fees, and §14a Modul 3. Provide precise reasoning and interpret results "
-        "numerically based on the provided context."
+        "§14a Modul 3 grid fees, optimisation logic, and tariff economics. "
+        "Use the provided context. Give numeric and insightful reasoning."
     )
 
+    url = "https://api.groq.com/openai/v1/chat/completions"
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+    }
+
     payload = {
-        "model": "gpt-4o-mini",
+        "model": "llama3-70b-8192",
         "messages": [
             {"role": "system", "content": system_prompt + "\n\n" + context},
             {"role": "user", "content": user_message},
         ],
-    }
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "temperature": 0.2
     }
 
     try:
-        r = requests.post("https://api.openai.com/v1/chat/completions",
-                          headers=headers, json=payload)
+        r = requests.post(url, headers=headers, json=payload)
         data = r.json()
 
         if "error" in data:
@@ -1052,23 +1054,23 @@ st.markdown("</div>", unsafe_allow_html=True)
 if "aix_history" not in st.session_state:
     st.session_state.aix_history = []
 
-# Show chat messages
+# Display chat messages
 for role, msg in st.session_state.aix_history:
     if role == "user":
         st.markdown(f"**You:** {msg}")
     else:
         st.markdown(f"**AIX:** {msg}")
 
-# Chat input box
-user_msg = st.chat_input("Ask AIX about results, savings, DA/ID logic, Modul 3…")
+# Input bar
+user_msg = st.chat_input("Ask AIX about results, savings, tariffs, optimisations…")
 
 if user_msg:
     st.session_state.aix_history.append(("user", user_msg))
-    reply = aix_answer(user_msg)
+    reply = aix_answer(user_msg)  # <— uses Groq now
     st.session_state.aix_history.append(("assistant", reply))
     st.rerun()
 # =============================================================================
-# AIX ASSISTANT — FLOATING BUBBLE UI (STEP 3)
+# AIX ASSISTANT — FLOATING CHAT BUBBLE UI (STEP 3)
 # =============================================================================
 st.markdown("""
 <style>
@@ -1110,4 +1112,3 @@ st.markdown("""
     <h3 style="color:#E2000F;margin-top:0;">AIX Assistant</h3>
 </div>
 """, unsafe_allow_html=True)
-
