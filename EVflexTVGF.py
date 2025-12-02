@@ -946,6 +946,57 @@ if enable_mod3 and grid_fee_series is not None and selected_dso is not None:
         }
     )
     st.table(df_mod3)
+    # -------------------------
+# AIX Assistant Response Function (model-aware)
+# -------------------------
+import os
+import requests
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+def aix_answer(user_message):
+    # Build dynamic context for the assistant
+    context = f"""
+    MODEL SUMMARY:
+    - Annual cost without Module 3 (DA-indexed): {annual_costs_no_m3.loc['DA-indexed']:.2f} €
+    - Annual cost with Module 3 (DA-indexed, Westnetz): {annual_costs_m3.loc['DA-indexed + Modul3 (Westnetz)']:.2f} €
+    - Savings from Module 3 (DA-indexed): {savings_from_m3.loc['DA-indexed → Modul 3']:.2f} €
+
+    Key logic:
+    - DA-indexed does NOT shift charging hours.
+    - Module 3 only reduces grid fees in DSO-specific low-load windows.
+    - If charging does not occur in these windows, Module 3 can INCREASE total cost.
+    """
+
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENAI_API_KEY}"
+    }
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system",
+             "content": "You are AIX, an expert in EV smart charging, DA/ID optimisation, grid fees, §14a Module 3, valuation modeling, and energy markets. "
+                        f"Here is the model context:\n{context}\nUse it when answering questions."},
+            {"role": "user", "content": user_message}
+        ]
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        data = response.json()
+
+        if "error" in data:
+            return f"⚠️ API error: {data['error'].get('message', 'Unknown error')}"
+
+        if "choices" not in data:
+            return "⚠️ No response from AI model. Please try again."
+
+        return data["choices"][0]["message"]["content"]
+
+    except Exception as e:
+        return f"⚠️ Request failed: {str(e)}"
 
     # -----------------------------
     # BAR CHARTS FOR RESULTS
@@ -1019,12 +1070,28 @@ st.markdown(
 """
 )
 st.markdown("</div>", unsafe_allow_html=True)
-# -----------------------
-# FLOATING CHAT BUBBLE UI
-# -----------------------
-import streamlit as st
+# ------------------------
+# Chat Session State
+# ------------------------
+if "aix_history" not in st.session_state:
+    st.session_state.aix_history = []
 
-# Floating button + window
+for role, msg in st.session_state.aix_history:
+    if role == "user":
+        st.markdown(f"**You:** {msg}")
+    else:
+        st.markdown(f"**AIX:** {msg}")
+
+user_input = st.chat_input("Ask AIX...")
+
+if user_input:
+    st.session_state.aix_history.append(("user", user_input))
+    answer = aix_answer(user_input)
+    st.session_state.aix_history.append(("assistant", answer))
+    st.rerun()
+# -----------------------
+# Floating Chat Bubble UI
+# -----------------------
 st.markdown("""
 <style>
 #aix_chat_button {
@@ -1039,7 +1106,6 @@ st.markdown("""
     font-size: 16px;
     cursor: pointer;
     z-index: 10000;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
 }
 #aix_chat_window {
     position: fixed;
@@ -1063,24 +1129,5 @@ st.markdown("""
 
 <div id="aix_chat_window">
     <h4 style="color:#E2000F;margin:0;">AIX Assistant</h4>
+</div>
 """, unsafe_allow_html=True)
-
-# Chat state
-if "aix_history" not in st.session_state:
-    st.session_state.aix_history = []
-
-# Show history
-for role, msg in st.session_state.aix_history:
-    if role == "user":
-        st.markdown(f"**You:** {msg}")
-    else:
-        st.markdown(f"**AIX:** {msg}")
-
-# Chat box
-user_input = st.chat_input("Ask AIX...")
-
-if user_input:
-    st.session_state.aix_history.append(("user", user_input))
-    bot_reply = aix_answer(user_input)
-    st.session_state.aix_history.append(("assistant", bot_reply))
-    st.rerun()
