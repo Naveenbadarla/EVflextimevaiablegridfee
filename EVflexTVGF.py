@@ -1022,25 +1022,25 @@ st.markdown("</div>", unsafe_allow_html=True)
 # -----------------------
 # FLOATING CHAT BUBBLE UI
 # -----------------------
+import streamlit as st
+
+# Floating button + window
 st.markdown("""
 <style>
-/* Floating Chat Button */
 #aix_chat_button {
     position: fixed;
     bottom: 22px;
     right: 22px;
-    background-color: #E2000F; 
+    background-color: #E2000F;
     color: white;
     padding: 12px 20px;
     border-radius: 40px;
     font-weight: 600;
     font-size: 16px;
     cursor: pointer;
-    box-shadow: 0px 4px 10px rgba(0,0,0,0.3);
     z-index: 10000;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
 }
-
-/* Chat Window */
 #aix_chat_window {
     position: fixed;
     bottom: 80px;
@@ -1049,57 +1049,38 @@ st.markdown("""
     height: 430px;
     background-color: #1e1e1e;
     color: white;
-    border-radius: 12px;
     padding: 12px;
-    display: none;
-    flex-direction: column;
+    border-radius: 12px;
     border: 2px solid #E2000F;
+    display: none;
     z-index: 10001;
-}
-
-/* Chat Input Box */
-#aix_input_box {
-    width: 100%;
-    padding: 8px;
-    border-radius: 8px;
-    border: none;
-    margin-top: 8px;
 }
 </style>
 
-<!-- Chat Button -->
-<div id="aix_chat_button" onclick="
-    var chat = document.getElementById('aix_chat_window');
-    chat.style.display = chat.style.display === 'none' ? 'flex' : 'none';
-">
+<div id="aix_chat_button" onclick="document.getElementById('aix_chat_window').style.display='block';">
 🤖 AIX Assistant
 </div>
 
-<!-- Chat Window -->
 <div id="aix_chat_window">
-    <h4 style='margin:0; color:#E2000F;'>AIX Assistant</h4>
-    <div style="flex-grow:1; overflow-y:auto; padding:4px;" id="aix_chat_history"></div>
-    <input type="text" id="aix_input_box" placeholder="Ask a question..." 
-        onkeydown="if(event.key==='Enter'){sendAIXMessage();}">
-</div>
-
-<script>
-function sendAIXMessage() {
-    var user_input = document.getElementById('aix_input_box').value;
-    if(user_input.trim()===''){return;}
-
-    var history = document.getElementById('aix_chat_history');
-    history.innerHTML += "<div><b>You:</b> " + user_input + "</div>";
-
-    // send to Streamlit backend
-    fetch('/aix_chat?q=' + encodeURIComponent(user_input))
-      .then(response => response.json())
-      .then(data => {
-        history.innerHTML += "<div><b>AIX:</b> " + data.answer + "</div>";
-        history.scrollTop = history.scrollHeight;
-      });
-
-    document.getElementById('aix_input_box').value = "";
-}
-</script>
+    <h4 style="color:#E2000F;margin:0;">AIX Assistant</h4>
 """, unsafe_allow_html=True)
+
+# Chat state
+if "aix_history" not in st.session_state:
+    st.session_state.aix_history = []
+
+# Show history
+for role, msg in st.session_state.aix_history:
+    if role == "user":
+        st.markdown(f"**You:** {msg}")
+    else:
+        st.markdown(f"**AIX:** {msg}")
+
+# Chat box
+user_input = st.chat_input("Ask AIX...")
+
+if user_input:
+    st.session_state.aix_history.append(("user", user_input))
+    bot_reply = aix_answer(user_input)
+    st.session_state.aix_history.append(("assistant", bot_reply))
+    st.rerun()
