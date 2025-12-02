@@ -1072,9 +1072,16 @@ if "aix_history" not in st.session_state:
 # Display chat messages
 for role, msg in st.session_state.aix_history:
     if role == "user":
-        st.markdown(f"**You:** {msg}")
+        st.markdown(
+            f"<p style='color:#FF4B4B; font-weight:600;'>🧑‍💬 You: {msg}</p>",
+            unsafe_allow_html=True
+        )
     else:
-        st.markdown(f"**AIX:** {msg}")
+        st.markdown(
+            f"<p style='color:white; font-weight:400;'>🤖 AIX: {msg}</p>",
+            unsafe_allow_html=True
+        )
+
 
 # Input bar
 user_msg = st.chat_input("Ask AIX about results, savings, tariffs, optimisations…")
