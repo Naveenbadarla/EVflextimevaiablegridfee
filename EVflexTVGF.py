@@ -946,7 +946,7 @@ if enable_mod3 and grid_fee_series is not None and selected_dso is not None:
         }
     )
     st.table(df_mod3)
-    # -------------------------
+# -------------------------
 # AIX Assistant Response Function (model-aware)
 # -------------------------
 import os
@@ -955,17 +955,33 @@ import requests
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 def aix_answer(user_message):
-    # Build dynamic context for the assistant
-    context = f"""
-    MODEL SUMMARY:
-    - Annual cost without Module 3 (DA-indexed): {annual_costs_no_m3.loc['DA-indexed']:.2f} €
-    - Annual cost with Module 3 (DA-indexed, Westnetz): {annual_costs_m3.loc['DA-indexed + Modul3 (Westnetz)']:.2f} €
-    - Savings from Module 3 (DA-indexed): {savings_from_m3.loc['DA-indexed → Modul 3']:.2f} €
 
-    Key logic:
+    # Build context using YOUR model variable names
+    context = f"""
+    MODEL SUMMARY (automatically extracted):
+
+    DA-indexed:
+      - Without Module 3: {da_index_annual:.2f} €
+      - With Module 3 (Westnetz): {da_index_annual_mod3:.2f} €
+      - Savings: {da_index_annual - da_index_annual_mod3:.2f} €
+
+    DA-optimised:
+      - Without Module 3: {da_opt_annual:.2f} €
+      - With Module 3: {da_opt_annual_mod3:.2f} €
+      - Savings: {da_opt_annual - da_opt_annual_mod3:.2f} €
+
+    DA+ID-optimised:
+      - Without Module 3: {da_id_annual:.2f} €
+      - With Module 3: {da_id_annual_mod3:.2f} €
+      - Savings: {da_id_annual - da_id_annual_mod3:.2f} €
+    """
+
+    explanation = """
+    Interpretation:
     - DA-indexed does NOT shift charging hours.
-    - Module 3 only reduces grid fees in DSO-specific low-load windows.
-    - If charging does not occur in these windows, Module 3 can INCREASE total cost.
+    - Module 3 only reduces tariffs in DSO-defined low-load windows.
+    - If the EV charges outside those windows, Module 3 provides no benefit.
+    - This can lead to NEGATIVE savings for DA-indexed profiles.
     """
 
     url = "https://api.openai.com/v1/chat/completions"
@@ -976,9 +992,8 @@ def aix_answer(user_message):
     payload = {
         "model": "gpt-4o-mini",
         "messages": [
-            {"role": "system",
-             "content": "You are AIX, an expert in EV smart charging, DA/ID optimisation, grid fees, §14a Module 3, valuation modeling, and energy markets. "
-                        f"Here is the model context:\n{context}\nUse it when answering questions."},
+            {"role": "system", "content": "You are AIX, an expert in EV smart charging, DA/ID optimisation, and §14a Module 3. Use the model results and explain clearly.\n"
+                                         + context + explanation},
             {"role": "user", "content": user_message}
         ]
     }
@@ -991,7 +1006,7 @@ def aix_answer(user_message):
             return f"⚠️ API error: {data['error'].get('message', 'Unknown error')}"
 
         if "choices" not in data:
-            return "⚠️ No response from AI model. Please try again."
+            return "⚠️ No reply from AI. Try again."
 
         return data["choices"][0]["message"]["content"]
 
