@@ -8,28 +8,21 @@ import base64
 import openai
 from urllib.parse import unquote
 import streamlit as st
+from openai import OpenAI
+import os
 
-# ------------
-# AIX BACKEND
-# ------------
-def handle_aix_query():
-    query = st.experimental_get_query_params().get("q", [""])[0]
-    query = unquote(query)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-    response = openai.ChatCompletion.create(
+def aix_answer(user_message):
+    completion = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "You are AIX, an expert assistant for EV charging optimisation, DA/ID market logic, grid fees, §14a Module 3, valuation models, and energy markets."},
-            {"role": "user", "content": query}
+            {"role": "system", "content": "You are AIX, an expert assistant for EV charging optimisation, DA/ID logic, grid fees, §14a, valuation modelling, and energy markets. Keep answers concise and correct."},
+            {"role": "user", "content": user_message}
         ]
     )
+    return completion.choices[0].message["content"]
 
-    return {"answer": response["choices"][0]["message"]["content"]}
-
-# Register the custom endpoint
-if st.experimental_get_query_params().get("q"):
-    st.json(handle_aix_query())
-    st.stop()
 
 # =============================================================================
 # PAGE CONFIG
