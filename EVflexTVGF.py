@@ -215,7 +215,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-st.markdown("<h1 style='text-align:center; color:#E2000F; margin-top:10px;'>🚀 E.ON AIX — AI eXcellence Initiative</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center; font-family:Trebuchet MS, Helvetica, sans-serif; font-weight:700; color:#E2000F; letter-spacing:1px; margin-top:12px;'>E.ON AI<span style='color:white;'>X</span> — AI eXcellence Initiative</h1>", unsafe_allow_html=True)
 
 from streamlit.components.v1 import html
 
