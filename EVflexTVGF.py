@@ -5,9 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import datetime
 import base64
-import openai
-from urllib.parse import unquote
-import streamlit as st
+
 
 from openai import OpenAI
 import os
