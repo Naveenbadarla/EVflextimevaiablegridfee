@@ -900,19 +900,66 @@ if enable_mod3 and grid_fee_series is not None and selected_dso is not None:
     )
     st.table(df_mod3)
 
-# AIX Assistant — Updated for current Groq model
+# =============================================================================
+# AIX ASSISTANT — MODEL-AWARE ENGINE (FIXED & IMPROVED FOR GROQ)
+# =============================================================================
 import os
 import requests
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 def aix_answer(user_message):
-    try:
-        context = f""" ... (your existing context logic) ... """
-    except:
-        context = "Model results not available."
+    """AIX assistant that ALWAYS uses your model outputs when answering."""
 
-    system_prompt = "You are AIX, ... (your system prompt) ..."
+    # ---- Build explicit, machine-readable context ----
+    try:
+        model_context = f"""
+        === EV MODEL RESULTS ===
+
+        DA_INDEXED:
+            WITHOUT_M3: {da_index_annual:.2f}
+            WITH_M3:    {da_index_annual_mod3:.2f}
+            SAVINGS:    {da_index_annual - da_index_annual_mod3:.2f}
+
+        DA_OPTIMISED:
+            WITHOUT_M3: {da_opt_annual:.2f}
+            WITH_M3:    {da_opt_annual_mod3:.2f}
+            SAVINGS:    {da_opt_annual - da_opt_annual_mod3:.2f}
+
+        DA_ID_OPTIMISED:
+            WITHOUT_M3: {da_id_annual:.2f}
+            WITH_M3:    {da_id_annual_mod3:.2f}
+            SAVINGS:    {da_id_annual - da_id_annual_mod3:.2f}
+
+        === RULES ===
+        - Modul 3 only gives reduced grid fees during DSO low-load windows.
+        - DA-indexed does NOT shift load → often misses those hours → can have negative savings.
+        - DA-optimised & DA+ID-optimised shift charging → benefit strongly from Modul 3.
+        """
+
+    except Exception:
+        model_context = "MODEL_RESULTS_NOT_AVAILABLE"
+
+    # ---- Strong system instructions ----
+    system_prompt = f"""
+    You are AIX, the expert assistant for EV smart charging & §14a Modul 3.
+
+    You ALWAYS use the model results given in the section '=== EV MODEL RESULTS ==='.  
+    You NEVER say “no results provided” or “I don't know the results”.  
+    If the user asks vague things like “Explain results”, interpret it as:
+        → “Explain the model results in the provided context”.
+
+    Your job:
+      - Explain the three scenarios
+      - Interpret costs, savings, differences
+      - Explain why savings are positive or negative
+      - Be specific, numeric, and concise
+      - ALWAYS reference real values provided in the context
+
+    Here is the model context you must use:
+
+    {model_context}
+    """
 
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
@@ -921,19 +968,25 @@ def aix_answer(user_message):
     }
 
     payload = {
-        "model": "llama-3.3-70b-versatile",  # Updated model
+        "model": "llama-3.3-70b-versatile",    # Latest supported
         "messages": [
-            {"role": "system", "content": system_prompt + "\n\n" + context},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ],
         "temperature": 0.2
     }
 
-    r = requests.post(url, headers=headers, json=payload)
-    data = r.json()
-    if "error" in data:
-        return "⚠️ API Error: " + data["error"].get("message", "")
-    return data["choices"][0]["message"]["content"]
+    try:
+        r = requests.post(url, headers=headers, json=payload)
+        data = r.json()
+
+        if "error" in data:
+            return "⚠️ API Error: " + data["error"].get("message", "")
+
+        return data["choices"][0]["message"]["content"]
+
+    except Exception as e:
+        return f"⚠️ Request failed: {str(e)}"
 
 
 
