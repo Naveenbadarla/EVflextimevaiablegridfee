@@ -5,6 +5,31 @@ import plotly.express as px
 import plotly.graph_objects as go
 import datetime
 import base64
+import openai
+from urllib.parse import unquote
+import streamlit as st
+
+# ------------
+# AIX BACKEND
+# ------------
+def handle_aix_query():
+    query = st.experimental_get_query_params().get("q", [""])[0]
+    query = unquote(query)
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are AIX, an expert assistant for EV charging optimisation, DA/ID market logic, grid fees, §14a Module 3, valuation models, and energy markets."},
+            {"role": "user", "content": query}
+        ]
+    )
+
+    return {"answer": response["choices"][0]["message"]["content"]}
+
+# Register the custom endpoint
+if st.experimental_get_query_params().get("q"):
+    st.json(handle_aix_query())
+    st.stop()
 
 # =============================================================================
 # PAGE CONFIG
@@ -992,3 +1017,87 @@ st.markdown(
 """
 )
 st.markdown("</div>", unsafe_allow_html=True)
+# -----------------------
+# FLOATING CHAT BUBBLE UI
+# -----------------------
+st.markdown("""
+<style>
+/* Floating Chat Button */
+#aix_chat_button {
+    position: fixed;
+    bottom: 22px;
+    right: 22px;
+    background-color: #E2000F; 
+    color: white;
+    padding: 12px 20px;
+    border-radius: 40px;
+    font-weight: 600;
+    font-size: 16px;
+    cursor: pointer;
+    box-shadow: 0px 4px 10px rgba(0,0,0,0.3);
+    z-index: 10000;
+}
+
+/* Chat Window */
+#aix_chat_window {
+    position: fixed;
+    bottom: 80px;
+    right: 22px;
+    width: 330px;
+    height: 430px;
+    background-color: #1e1e1e;
+    color: white;
+    border-radius: 12px;
+    padding: 12px;
+    display: none;
+    flex-direction: column;
+    border: 2px solid #E2000F;
+    z-index: 10001;
+}
+
+/* Chat Input Box */
+#aix_input_box {
+    width: 100%;
+    padding: 8px;
+    border-radius: 8px;
+    border: none;
+    margin-top: 8px;
+}
+</style>
+
+<!-- Chat Button -->
+<div id="aix_chat_button" onclick="
+    var chat = document.getElementById('aix_chat_window');
+    chat.style.display = chat.style.display === 'none' ? 'flex' : 'none';
+">
+🤖 AIX Assistant
+</div>
+
+<!-- Chat Window -->
+<div id="aix_chat_window">
+    <h4 style='margin:0; color:#E2000F;'>AIX Assistant</h4>
+    <div style="flex-grow:1; overflow-y:auto; padding:4px;" id="aix_chat_history"></div>
+    <input type="text" id="aix_input_box" placeholder="Ask a question..." 
+        onkeydown="if(event.key==='Enter'){sendAIXMessage();}">
+</div>
+
+<script>
+function sendAIXMessage() {
+    var user_input = document.getElementById('aix_input_box').value;
+    if(user_input.trim()===''){return;}
+
+    var history = document.getElementById('aix_chat_history');
+    history.innerHTML += "<div><b>You:</b> " + user_input + "</div>";
+
+    // send to Streamlit backend
+    fetch('/aix_chat?q=' + encodeURIComponent(user_input))
+      .then(response => response.json())
+      .then(data => {
+        history.innerHTML += "<div><b>AIX:</b> " + data.answer + "</div>";
+        history.scrollTop = history.scrollHeight;
+      });
+
+    document.getElementById('aix_input_box').value = "";
+}
+</script>
+""", unsafe_allow_html=True)
