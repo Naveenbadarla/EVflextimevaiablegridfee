@@ -6,21 +6,31 @@ import plotly.graph_objects as go
 import datetime
 import base64
 
-
-from openai import OpenAI
 import os
+import requests
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 def aix_answer(user_message):
-    completion = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are AIX, an expert assistant for EV charging optimisation, DA/ID logic, grid fees, §14a, valuation modelling, and energy markets. Keep answers concise and correct."},
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENAI_API_KEY}"
+    }
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": "You are AIX, an expert assistant for EV charging optimisation, DA/ID logic, §14a grid fees, valuation modelling, and energy markets."},
             {"role": "user", "content": user_message}
         ]
-    )
-    return completion.choices[0].message["content"]
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+    data = response.json()
+
+    return data["choices"][0]["message"]["content"]
+
+
 
 
 # =============================================================================
