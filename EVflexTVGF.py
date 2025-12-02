@@ -901,17 +901,16 @@ if enable_mod3 and grid_fee_series is not None and selected_dso is not None:
     st.table(df_mod3)
 
 # =============================================================================
-# AIX ASSISTANT — MODEL-AWARE ENGINE (STEP 1, GROQ VERSION)
+# AIX ASSISTANT — MODEL-AWARE ENGINE (STEP 1, NEW GROQ MODELS)
 # =============================================================================
 import os
 import requests
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")  # <—— Groq key loaded here
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 def aix_answer(user_message):
     """AIX assistant that answers based on your model outputs (Groq-powered)."""
 
-    # ---- Model context injection ----
     try:
         context = f"""
         MODEL SUMMARY
@@ -932,29 +931,28 @@ def aix_answer(user_message):
             - Savings:         {da_id_annual - da_id_annual_mod3:.2f} €
 
         Interpretation rules:
-        - Modul 3 applies lower grid fees ONLY in DSO low-load windows.
-        - DA-indexed does NOT shift charging → often misses discounted windows.
-        - Therefore its Modul-3 savings can be NEGATIVE.
-        - Optimised profiles benefit more because they align charging with cheap hours.
+        - Modul 3 applies lower grid fees ONLY in DSO-defined low-load windows.
+        - DA-indexed usually does NOT shift load → often misses discounted windows.
+        - This leads to NEGATIVE savings for DA-indexed Modul 3.
+        - Optimised profiles benefit most because they align charging with cheap hours.
         """
     except:
         context = "Model results not available."
 
     system_prompt = (
-        "You are AIX, an expert in EV smart charging, DA/ID markets, "
-        "§14a Modul 3 grid fees, optimisation logic, and tariff economics. "
-        "Use the provided context. Give numeric and insightful reasoning."
+        "You are AIX, the expert on EV smart charging, DA/ID markets, "
+        "grid fees, and §14a Modul 3 tariff logic. "
+        "Use the model results provided in the context."
     )
 
     url = "https://api.groq.com/openai/v1/chat/completions"
-
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {GROQ_API_KEY}",
     }
 
     payload = {
-        "model": "llama3-70b-8192",
+        "model": "llama-3.1-70b-versatile",  # <—— NEW MODEL
         "messages": [
             {"role": "system", "content": system_prompt + "\n\n" + context},
             {"role": "user", "content": user_message},
@@ -963,8 +961,8 @@ def aix_answer(user_message):
     }
 
     try:
-        r = requests.post(url, headers=headers, json=payload)
-        data = r.json()
+        response = requests.post(url, json=payload, headers=headers)
+        data = response.json()
 
         if "error" in data:
             return "⚠️ API Error: " + data["error"].get("message", "")
@@ -973,6 +971,7 @@ def aix_answer(user_message):
 
     except Exception as e:
         return f"⚠️ Request failed: {str(e)}"
+
 
 
     # -----------------------------
